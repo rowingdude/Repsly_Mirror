@@ -53,17 +53,22 @@ void pricelist_set_use_prices(PricelistDataPtr pricelist, bool use_prices) {
     pricelist->use_prices = use_prices;
 }
 
-void pricelist_add_item(PricelistDataPtr pricelist, int product_id, double price, bool active, 
-                        const char* client_code, const char* manufacture_id, 
-                        const char* date_available_from, const char* date_available_to, 
+void pricelist_add_item(PricelistDataPtr pricelist, const char* product_code, const char* product_name,
+                        double price, bool active, const char* client_code, const char* client_name,
+                        const char* manufacture_id, const char* date_available_from, const char* date_available_to, 
                         int min_quantity, int max_quantity) {
     if (pricelist->item_count < MAX_PRICELIST_ITEMS) {
         struct PricelistItem *item = &pricelist->items[pricelist->item_count];
-        item->product_id = product_id;
+        strncpy(item->product_code, product_code, sizeof(item->product_code) - 1);
+        item->product_code[sizeof(item->product_code) - 1] = '\0';
+        strncpy(item->product_name, product_name, sizeof(item->product_name) - 1);
+        item->product_name[sizeof(item->product_name) - 1] = '\0';
         item->price = price;
         item->active = active;
         strncpy(item->client_code, client_code, sizeof(item->client_code) - 1);
         item->client_code[sizeof(item->client_code) - 1] = '\0';
+        strncpy(item->client_name, client_name, sizeof(item->client_name) - 1);
+        item->client_name[sizeof(item->client_name) - 1] = '\0';
         strncpy(item->manufacture_id, manufacture_id, sizeof(item->manufacture_id) - 1);
         item->manufacture_id[sizeof(item->manufacture_id) - 1] = '\0';
         strncpy(item->date_available_from, date_available_from, sizeof(item->date_available_from) - 1);
@@ -205,24 +210,26 @@ static PricelistDataPtr pricelist_from_json(json_t *pricelist_json) {
         size_t index;
         json_t *item;
         json_array_foreach(items, index, item) {
-            int product_id = json_integer_value(json_object_get(item, "ProductID"));
+            const char *product_code = json_string_value(json_object_get(item, "ProductCode"));
+            const char *product_name = json_string_value(json_object_get(item, "ProductName"));
             double price = json_real_value(json_object_get(item, "Price"));
             bool active = json_is_true(json_object_get(item, "Active"));
-            const char *client_code = json_string_value(json_object_get(item, "ClientID"));
+            const char *client_code = json_string_value(json_object_get(item, "ClientCode"));
+            const char *client_name = json_string_value(json_object_get(item, "ClientName"));
             const char *manufacture_id = json_string_value(json_object_get(item, "ManufactureID"));
             const char *date_available_from = json_string_value(json_object_get(item, "DateAvailableFrom"));
             const char *date_available_to = json_string_value(json_object_get(item, "DateAvailableTo"));
             int min_quantity = json_integer_value(json_object_get(item, "MinQuantity"));
             int max_quantity = json_integer_value(json_object_get(item, "MaxQuantity"));
 
-            pricelist_add_item(pricelist, product_id, price, active, client_code, manufacture_id,
+            pricelist_add_item(pricelist, product_code, product_name, price, active, 
+                               client_code, client_name, manufacture_id,
                                date_available_from, date_available_to, min_quantity, max_quantity);
         }
     }
     
     return pricelist;
 }
-
 bool pricelist_fetch_and_insert(PGconn *db_conn) {
     json_t *root = api_fetch_data("pricelists", 0);  // Assuming we always fetch all pricelists
     if (!root) {
