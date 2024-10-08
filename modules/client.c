@@ -1,7 +1,9 @@
 #include "../include/client.h"
+#include "../include/api.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <jansson.h>
 
 struct ClientData {
     int client_id;
@@ -26,7 +28,6 @@ void client_set_code(ClientDataPtr client, const char* code) {
     strncpy(client->code, code, sizeof(client->code) - 1);
     client->code[sizeof(client->code) - 1] = '\0';
 }
-
 void client_set_active(ClientDataPtr client, bool active) {
     client->active = active;
 }
