@@ -9,10 +9,12 @@
 #define MAX_PRICELIST_ITEMS 1000
 
 struct PricelistItem {
-    int product_id;
+    char product_code[51];
+    char product_name[256];
     double price;
     bool active;
     char client_code[51];
+    char client_name[256];
     char manufacture_id[51];
     char date_available_from[20];
     char date_available_to[20];
