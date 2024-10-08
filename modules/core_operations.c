@@ -252,3 +252,44 @@ int get_or_create_long(PGconn *conn, double longitude) {
     const char *param_values[] = {long_str};
     return execute_int_query(conn, query, 1, param_values);
 }
+
+
+// Price List Items
+
+int get_or_create_product(PGconn *conn, const char *product_code, const char *product_name) {
+    const char *query =
+        "WITH new_product AS ("
+        "    INSERT INTO inventory.products (code, name) "
+        "    VALUES ($1, $2) "
+        "    ON CONFLICT (code) DO NOTHING "
+        "    RETURNING product_id"
+        ")"
+        "SELECT product_id FROM new_product "
+        "UNION ALL "
+        "SELECT product_id FROM inventory.products "
+        "WHERE code = $1 "
+        "LIMIT 1";
+
+    const char *param_values[] = {product_code, product_name};
+    return execute_int_query(conn, query, 2, param_values);
+}
+
+int get_or_create_client(PGconn *conn, const char *client_code, const char *client_name) {
+    const char *query =
+        "WITH new_client AS ("
+        "    INSERT INTO sales.clients (code, name) "
+        "    VALUES ($1, $2) "
+        "    ON CONFLICT (code) DO NOTHING "
+        "    RETURNING client_id"
+        ")"
+        "SELECT client_id FROM new_client "
+        "UNION ALL "
+        "SELECT client_id FROM sales.clients "
+        "WHERE code = $1 "
+        "LIMIT 1";
+
+    const char *param_values[] = {client_code, client_name};
+    return execute_int_query(conn, query, 2, param_values);
+}
+
+
