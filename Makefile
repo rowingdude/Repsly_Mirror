@@ -1,29 +1,44 @@
 CC = gcc
-CFLAGS = -I./include -Wall -Wextra -pedantic
-LDFLAGS = -lpq
-
+CFLAGS = -I./include -Wall -Wextra -pedantic -g
+LDFLAGS = -lpq -lcurl -ljansson -lssl -lcrypto
 SRCDIR = src
 MODDIR = modules
 OBJDIR = obj
+BINDIR = bin
 
-SOURCES = $(wildcard $(SRCDIR)/*.c) $(wildcard $(MODDIR)/*.c)
-OBJECTS = $(patsubst %.c,$(OBJDIR)/%.o,$(notdir $(SOURCES)))
+# Add header files to track dependencies
+DEPS = $(wildcard include/*.h)
 
-TARGET = repsly_mirror
+# Separate source files by directory
+SRC_SOURCES = $(wildcard $(SRCDIR)/*.c)
+MOD_SOURCES = $(wildcard $(MODDIR)/*.c)
 
-$(TARGET): $(OBJECTS)
+# Generate object file names
+SRC_OBJECTS = $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SRC_SOURCES))
+MOD_OBJECTS = $(patsubst $(MODDIR)/%.c,$(OBJDIR)/%.o,$(MOD_SOURCES))
+OBJECTS = $(SRC_OBJECTS) $(MOD_OBJECTS)
+
+TARGET = $(BINDIR)/repsly_mirror
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(OBJECTS) | $(BINDIR)
 	$(CC) $(OBJECTS) -o $@ $(LDFLAGS)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
+$(OBJDIR)/%.o: $(SRCDIR)/%.c $(DEPS) | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJDIR)/%.o: $(MODDIR)/%.c | $(OBJDIR)
+$(OBJDIR)/%.o: $(MODDIR)/%.c $(DEPS) | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJDIR):
+$(OBJDIR) $(BINDIR):
 	mkdir -p $@
 
 clean:
-	rm -rf $(OBJDIR) $(TARGET)
+	rm -rf $(OBJDIR) $(BINDIR)
 
-.PHONY: clean
+# Add a 'run' target for convenience
+run: $(TARGET)
+	./$(TARGET)
