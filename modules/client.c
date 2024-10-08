@@ -71,6 +71,20 @@ void client_set_name_id(ClientDataPtr client, int name_id) {
 }
 
 bool client_insert(PGconn *db_conn, ClientDataPtr client) {
+    int address_id = get_or_create_address(db_conn, client->street_address, client->zip, client->city, client->state, client->country);
+    int contact_id = get_or_create_contact_info(db_conn, client->phone, client->mobile, client->website);
+    int territory_id = get_or_create_territory(db_conn, client->territory);
+    int rep_id = get_or_create_representative(db_conn, client->rep_code, client->rep_name);
+    int contact_name_id = get_or_create_name(db_conn, client->contact_name);
+    int contact_title_id = get_or_create_name(db_conn, client->contact_title);
+    int name_id = get_or_create_name(db_conn, client->name);
+
+    if (address_id < 0 || contact_id < 0 || territory_id < 0 || rep_id < 0 || 
+        contact_name_id < 0 || contact_title_id < 0 || name_id < 0) {
+        fprintf(stderr, "Failed to get or create referenced data for client\n");
+        return false;
+    }
+
     const char *insert_client_query = 
         "INSERT INTO sales.clients "
         "(code, active, address_id, contact_id, territory_id, rep_id, account_code, status, contact_name_id, contact_title_id, name_id) "

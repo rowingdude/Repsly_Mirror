@@ -55,9 +55,16 @@ void form_add_item(FormDataPtr form, const char* field, const char* value) {
 }
 
 bool form_insert(PGconn *db_conn, FormDataPtr form) {
+    int visit_id = get_or_create_visit(db_conn, form->visit_start, form->visit_end, form->rep_code, form->client_code);
+
+    if (visit_id < 0) {
+        fprintf(stderr, "Failed to get or create visit for form\n");
+        return false;
+    }
+
     const char *insert_form_query = 
-        "INSERT INTO field_ops.forms "
-        "(name, visit_id, time_id, signature_url) "
+        "INSERT INTO field_operations.forms "
+        "(name, visit_id, date_time, signature_url) "
         "VALUES ($1, $2, $3, $4) "
         "RETURNING form_id";
 
@@ -99,7 +106,7 @@ bool form_insert(PGconn *db_conn, FormDataPtr form) {
         const char *item_param_values[3];
         int item_param_lengths[3];
         int item_param_formats[3] = {0}; 
-        
+
         snprintf(id_str[0], sizeof(id_str[0]), "%d", form->form_id);
         item_param_values[0] = id_str[0];
         item_param_values[1] = form->items[i].field;

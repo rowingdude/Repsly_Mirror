@@ -233,7 +233,13 @@ CREATE TABLE field_ops.retail_audits (
     visit_id INTEGER REFERENCES field_ops.visits(visit_id),
     note_id INTEGER REFERENCES meta.notes(note_id)
 );
-
+CREATE TABLE field_operations.forms (
+    form_id SERIAL PRIMARY KEY,
+    name VARCHAR(255),
+    visit_id INTEGER REFERENCES field_operations.visits(visit_id),
+    date_time TIMESTAMP,
+    signature_url TEXT
+);
 -- Sales tables
 CREATE TABLE sales.clients (
     client_id SERIAL PRIMARY KEY,

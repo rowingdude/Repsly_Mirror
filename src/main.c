@@ -1,5 +1,5 @@
-#include "../include/client.h"
-#include "../include/form.h"
+#include "client.h"
+#include "form.h"
 #include <stdio.h>
 #include <libpq-fe.h>
 
