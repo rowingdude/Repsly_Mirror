@@ -182,7 +182,6 @@ static ClientDataPtr client_from_json(json_t *client_json) {
         }
     }
 
-    // ******* NEED TO ADD PRICE LISTS BEFORE RUNNING THIS!!!! ************
 
     json_t *price_lists = json_object_get(client_json, "PriceLists");
     if (json_is_array(price_lists)) {
@@ -196,6 +195,7 @@ static ClientDataPtr client_from_json(json_t *client_json) {
 
     return client;
 }
+
 
 bool client_fetch_and_insert(PGconn *db_conn, long last_timestamp) {
     json_t *root = api_fetch_data("clients", last_timestamp);
@@ -212,6 +212,7 @@ bool client_fetch_and_insert(PGconn *db_conn, long last_timestamp) {
 
     size_t index;
     json_t *client_json;
+    long max_timestamp = last_timestamp;
     json_array_foreach(clients, index, client_json) {
         ClientDataPtr client = client_from_json(client_json);
         
@@ -221,9 +222,19 @@ bool client_fetch_and_insert(PGconn *db_conn, long last_timestamp) {
             continue;
         }
 
+        long client_timestamp = json_integer_value(json_object_get(client_json, "TimeStamp"));
+        if (client_timestamp > max_timestamp) {
+            max_timestamp = client_timestamp;
+        }
+
         client_free(client);
     }
 
     json_decref(root);
+
+    if (!update_last_processed(db_conn, "clients", max_timestamp)) {
+        fprintf(stderr, "Failed to update last processed timestamp for clients\n");
+    }
+
     return true;
 }

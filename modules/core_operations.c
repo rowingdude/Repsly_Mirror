@@ -293,3 +293,49 @@ int get_or_create_client(PGconn *conn, const char *client_code, const char *clie
 }
 
 
+// Tracking for the last ID/timestamp recevied. 
+
+long get_last_processed(PGconn *conn, const char *entity_name) {
+    const char *query = "SELECT last_value FROM meta.last_processed WHERE entity_name = $1";
+
+    const char *param_values[] = { entity_name };
+    int param_lengths[] = { strlen(entity_name) };
+    int param_formats[] = { 0 };  // text format
+
+    PGresult *res = PQexecParams(conn, query, 1, NULL, param_values, param_lengths, param_formats, 0);
+
+    long result = 0;
+    if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
+        result = atol(PQgetvalue(res, 0, 0));
+    } else {
+        fprintf(stderr, "Failed to get last processed for %s: %s", entity_name, PQerrorMessage(conn));
+    }
+
+    PQclear(res);
+    return result;
+}
+
+bool update_last_processed(PGconn *conn, const char *entity_name, long last_value) {
+    const char *query = 
+        "INSERT INTO meta.last_processed (entity_name, last_value) "
+        "VALUES ($1, $2) "
+        "ON CONFLICT (entity_name) DO UPDATE "
+        "SET last_value = EXCLUDED.last_value";
+
+    char value_str[21];
+    snprintf(value_str, sizeof(value_str), "%ld", last_value);
+
+    const char *param_values[] = { entity_name, value_str };
+    int param_lengths[] = { strlen(entity_name), strlen(value_str) };
+    int param_formats[] = { 0, 0 };  // text format
+
+    PGresult *res = PQexecParams(conn, query, 2, NULL, param_values, param_lengths, param_formats, 0);
+
+    bool success = (PQresultStatus(res) == PGRES_COMMAND_OK);
+    if (!success) {
+        fprintf(stderr, "Failed to update last processed for %s: %s", entity_name, PQerrorMessage(conn));
+    }
+
+    PQclear(res);
+    return success;
+}

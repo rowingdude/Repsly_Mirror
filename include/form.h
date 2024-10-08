@@ -15,7 +15,7 @@ void form_set_signature_url(FormDataPtr form, const char* signature_url);
 void form_add_item(FormDataPtr form, const char* field, const char* value);
 
 bool form_insert(PGconn *db_conn, FormDataPtr form);
-
+bool form_fetch_and_insert(PGconn *db_conn, long last_form_id);
 int form_get_id(FormDataPtr form);
 void form_free(FormDataPtr form);
 

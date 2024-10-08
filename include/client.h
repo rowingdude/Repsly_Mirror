@@ -25,4 +25,6 @@ bool client_insert(PGconn *db_conn, ClientDataPtr client);
 int client_get_id(ClientDataPtr client);
 void client_free(ClientDataPtr client);
 
+bool client_fetch_and_insert(PGconn *db_conn, long last_timestamp);
+
 #endif 

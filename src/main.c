@@ -1,7 +1,20 @@
 #include "client.h"
 #include "form.h"
+#include "pricelists.h"
+#include "api.h"
+#include "core_operations.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <libpq-fe.h>
+#include <stdbool.h>
+
+#define MAX_ENTITIES 10
+
+typedef struct {
+    const char *name;
+    bool (*fetch_and_insert)(PGconn *db_conn, long last_id_or_timestamp);
+} EntityInfo;
 
 int main() {
     PGconn *db_conn = PQconnectdb("your_connection_string");
@@ -11,46 +24,38 @@ int main() {
         return 1;
     }
 
-    // Client example
-    ClientDataPtr client = client_create();
-    client_set_code(client, "ABC123");
-    client_set_active(client, true);
-    client_set_address_id(client, 1);
-    client_set_contact_id(client, 2);
-    client_set_territory_id(client, 3);
-    client_set_rep_id(client, 4);
-    client_set_account_code(client, "ACCT001");
-    client_set_status(client, "Active");
-    client_set_contact_name_id(client, 5);
-    client_set_contact_title_id(client, 6);
-    client_set_name_id(client, 7);
+    api_init();
 
-    if (client_insert(db_conn, client)) {
-        printf("Client inserted successfully with ID: %d\n", client_get_id(client));
-    } else {
-        printf("Failed to insert client\n");
+    EntityInfo entities[] = {
+        {"clients", client_fetch_and_insert},
+        {"forms", form_fetch_and_insert},
+        {"pricelists", pricelist_fetch_and_insert},
+        // Add more entities here as needed
+    };
+
+    int num_entities = sizeof(entities) / sizeof(EntityInfo);
+
+    // Main processing loop
+    bool all_done = false;
+    while (!all_done) {
+        all_done = true;
+        for (int i = 0; i < num_entities; i++) {
+            long last_processed = get_last_processed(db_conn, entities[i].name);
+            bool success = entities[i].fetch_and_insert(db_conn, last_processed);
+            
+            if (success) {
+                long new_last_processed = get_last_processed(db_conn, entities[i].name);
+                
+                if (new_last_processed > last_processed) {
+                    all_done = false;  // We processed some data, so we're not done yet
+                }
+            } else {
+                fprintf(stderr, "Failed to fetch and insert %s\n", entities[i].name);
+            }
+        }
     }
 
-    client_free(client);
-
-    // Form example
-    FormDataPtr form = form_create();
-    form_set_name(form, "Sample Form");
-    form_set_visit_id(form, 1);  // Assuming visit_id 1 exists
-    form_set_time_id(form, 1);   // Assuming time_id 1 exists
-    form_set_signature_url(form, "http://example.com/signature.jpg");
-    
-    form_add_item(form, "Question 1", "Answer 1");
-    form_add_item(form, "Question 2", "Answer 2");
-
-    if (form_insert(db_conn, form)) {
-        printf("Form inserted successfully with ID: %d\n", form_get_id(form));
-    } else {
-        printf("Failed to insert form\n");
-    }
-
-    form_free(form);
-
+    api_cleanup();
     PQfinish(db_conn);
     return 0;
 }
