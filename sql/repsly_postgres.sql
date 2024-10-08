@@ -1,4 +1,3 @@
--- Create schemas
 CREATE SCHEMA IF NOT EXISTS core;
 CREATE SCHEMA IF NOT EXISTS sales;
 CREATE SCHEMA IF NOT EXISTS inventory;
@@ -7,6 +6,7 @@ CREATE SCHEMA IF NOT EXISTS user_mgmt;
 CREATE SCHEMA IF NOT EXISTS meta;
 CREATE SCHEMA IF NOT EXISTS geo;
 CREATE SCHEMA IF NOT EXISTS geography;
+
 
 -- Meta tables
 CREATE TABLE meta.notes (
@@ -99,7 +99,10 @@ CREATE TABLE geo.long (
     longitude DECIMAL(9,6)
 );
 
--- Core tables
+
+
+
+
 CREATE TABLE core.addresses (
     address_id SERIAL PRIMARY KEY,
     street_address VARCHAR(255),
@@ -141,7 +144,7 @@ CREATE TABLE core.names (
     full_name VARCHAR(255)
 );
 
--- Field Operations tables
+
 CREATE TABLE field_ops.rep_code (
     rep_code_id SERIAL PRIMARY KEY,
     rep_code VARCHAR(20) UNIQUE
@@ -179,37 +182,7 @@ CREATE TABLE field_ops.visits (
     precision_end INTEGER,
     visit_status_by_schedule INTEGER,
     visit_ended BOOLEAN,
-    duration_minutes INTEGER GENERATED ALWAYS AS (
-        EXTRACT(EPOCH FROM (
-            (SELECT timestamp FROM meta.time WHERE time_id = time_end_id) - 
-            (SELECT timestamp FROM meta.time WHERE time_id = time_start_id)
-        )) / 60
-    ) STORED
-);
-
-CREATE TABLE field_ops.forms (
-    form_id SERIAL PRIMARY KEY,
-    name VARCHAR(255),
-    visit_id INTEGER REFERENCES field_ops.visits(visit_id),
-    time_id INTEGER REFERENCES meta.time(time_id),
-    signature_url TEXT
-);
-
-CREATE TABLE field_ops.form_items (
-    item_id SERIAL PRIMARY KEY,
-    form_id INTEGER REFERENCES field_ops.forms(form_id),
-    field VARCHAR(255),
-    value TEXT
-);
-
-CREATE TABLE field_ops.photos (
-    photo_id SERIAL PRIMARY KEY,
-    visit_id INTEGER REFERENCES field_ops.visits(visit_id),
-    client_id INTEGER,  -- Will be referenced later
-    rep_id INTEGER REFERENCES field_ops.representatives(rep_id),
-    note_id INTEGER REFERENCES meta.notes(note_id),
-    time_id INTEGER REFERENCES meta.time(time_id),
-    photo_url TEXT
+    duration_minutes INTEGER 
 );
 
 CREATE TABLE field_ops.daily_working_time (
@@ -231,17 +204,9 @@ CREATE TABLE field_ops.daily_working_time (
     min_max_visits_time INTEGER,
     time_at_client INTEGER,
     time_at_travel INTEGER,
-    duration_minutes INTEGER GENERATED ALWAYS AS (
-        EXTRACT(EPOCH FROM (
-            (SELECT timestamp FROM meta.time WHERE time_id = time_end_id) - 
-            (SELECT timestamp FROM meta.time WHERE time_id = time_start_id)
-        )) / 60
-    ) STORED,
-    mileage_difference INTEGER GENERATED ALWAYS AS (
-        (SELECT mileage FROM meta.mileage WHERE mileage_id = mileage_end_id) -
-        (SELECT mileage FROM meta.mileage WHERE mileage_id = mileage_start_id)
-    ) STORED
+    duration_minutes INTEGER
 );
+
 
 CREATE TABLE field_ops.working_day_tags (
     dwt_id INTEGER REFERENCES field_ops.daily_working_time(dwt_id),
@@ -285,11 +250,21 @@ CREATE TABLE sales.clients (
     name_id INTEGER REFERENCES core.names(name_id)
 );
 
+CREATE TABLE field_ops.photos (
+    photo_id SERIAL PRIMARY KEY,
+    visit_id INTEGER REFERENCES field_ops.visits(visit_id),
+    client_id INTEGER REFERENCES sales.clients(client_id),
+    rep_id INTEGER REFERENCES field_ops.representatives(rep_id),
+    note TEXT,
+    date_time TIMESTAMP,
+    photo_url TEXT
+);
 
 ALTER TABLE field_ops.visits ADD CONSTRAINT fk_visits_client FOREIGN KEY (client_id) REFERENCES sales.clients(client_id);
 ALTER TABLE field_ops.photos ADD CONSTRAINT fk_photos_client FOREIGN KEY (client_id) REFERENCES sales.clients(client_id);
 ALTER TABLE field_ops.visit_schedules ADD CONSTRAINT fk_visit_schedules_client FOREIGN KEY (client_id) REFERENCES sales.clients(client_id);
 ALTER TABLE field_ops.retail_audits ADD CONSTRAINT fk_retail_audits_client FOREIGN KEY (client_id) REFERENCES sales.clients(client_id);
+
 
 CREATE TABLE sales.client_tags (
     client_id INTEGER REFERENCES sales.clients(client_id),
@@ -318,11 +293,39 @@ CREATE TABLE inventory.package_types (
     conversion INTEGER
 );
 
+
+CREATE TABLE inventory.product_groups (
+    group_id SERIAL PRIMARY KEY,
+    code VARCHAR(20) UNIQUE,
+    name VARCHAR(80)
+);
+
+
 -- Document Item Attributes
 CREATE TABLE sales.document_item_attributes (
     attribute_id SERIAL PRIMARY KEY,
     name VARCHAR(100) UNIQUE
 );
+
+CREATE TABLE inventory.products (
+    product_id SERIAL PRIMARY KEY,
+    code VARCHAR(20) UNIQUE,
+    name VARCHAR(80),
+    group_id INTEGER REFERENCES inventory.product_groups(group_id),
+    active BOOLEAN,
+    unit_price DECIMAL(18,4),
+    ean VARCHAR(20),
+    note_id INTEGER REFERENCES meta.notes(note_id),
+    image_url TEXT,
+    master_product_id INTEGER REFERENCES inventory.products(product_id)
+);
+
+CREATE TABLE inventory.product_tags (
+    product_id INTEGER REFERENCES inventory.products(product_id),
+    tag_id INTEGER REFERENCES core.tags(tag_id),
+    PRIMARY KEY (product_id, tag_id)
+);
+
 
 CREATE TABLE sales.purchase_orders (
     order_id SERIAL PRIMARY KEY,
@@ -342,6 +345,11 @@ CREATE TABLE sales.purchase_orders (
     original_document_number TEXT
 );
 
+CREATE TABLE sales.document_item_attributes (
+    attribute_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE
+);
+
 CREATE TABLE sales.purchase_order_items (
     item_id SERIAL PRIMARY KEY,
     order_id INTEGER REFERENCES sales.purchase_orders(order_id),
@@ -356,41 +364,7 @@ CREATE TABLE sales.purchase_order_items (
     document_item_attribute_id INTEGER REFERENCES sales.document_item_attributes(attribute_id)
 );
 
-
--- Inventory tables
-CREATE TABLE inventory.product_groups (
-    group_id SERIAL PRIMARY KEY,
-    code VARCHAR(20) UNIQUE,
-    name VARCHAR(80)
-);
-
-CREATE TABLE inventory.product_tags (
-    product_id INTEGER REFERENCES inventory.products(product_id),
-    tag_id INTEGER REFERENCES core.tags(tag_id),
-    PRIMARY KEY (product_id, tag_id)
-);
-
-CREATE TABLE inventory.products (
-    product_id SERIAL PRIMARY KEY,
-    code VARCHAR(20) UNIQUE,
-    name VARCHAR(80),
-    group_id INTEGER REFERENCES inventory.product_groups(group_id),
-    active BOOLEAN,
-    unit_price DECIMAL(18,4),
-    ean VARCHAR(20),
-    note_id INTEGER REFERENCES meta.notes(note_id),
-    image_url TEXT,
-    master_product_id INTEGER REFERENCES inventory.products(product_id)
-);
-
--- Add foreign key constraint for product_id
 ALTER TABLE sales.purchase_order_items ADD CONSTRAINT fk_purchase_order_items_product FOREIGN KEY (product_id) REFERENCES inventory.products(product_id);
-
-CREATE TABLE inventory.product_tags (
-    product_id INTEGER REFERENCES inventory.products(product_id),
-    tag_id INTEGER REFERENCES core.tags(tag_id),
-    PRIMARY KEY (product_id, tag_id)
-);
 
 CREATE TABLE inventory.pricelists (
     pricelist_id SERIAL PRIMARY KEY,
@@ -427,7 +401,7 @@ CREATE TABLE field_ops.retail_audit_items (
     stock INTEGER
 );
 
--- User Management tables
+
 CREATE TABLE user_mgmt.users (
     user_id SERIAL PRIMARY KEY,
     code VARCHAR(20) UNIQUE,
@@ -453,7 +427,7 @@ CREATE TABLE user_mgmt.user_permissions (
     PRIMARY KEY (user_id, permission)
 );
 
--- Create indexes for improved query performance
+
 CREATE INDEX idx_visits_client_id ON field_ops.visits(client_id);
 CREATE INDEX idx_visits_rep_id ON field_ops.visits(rep_id);
 CREATE INDEX idx_visits_time_start ON field_ops.visits(time_start_id);
