@@ -129,3 +129,87 @@ int client_get_id(ClientDataPtr client) {
 void client_free(ClientDataPtr client) {
     free(client);
 }
+
+
+static ClientDataPtr client_from_json(json_t *client_json) {
+    ClientDataPtr client = client_create();
+    
+    client_set_code(client, json_string_value(json_object_get(client_json, "Code")));
+    client_set_active(client, json_is_true(json_object_get(client_json, "Active")));
+    client_set_name_id(client, json_integer_value(json_object_get(client_json, "Name")));
+    client_set_tag(client, json_string_value(json_object_get(client_json, "Tag")));
+    client_set_territory(client, json_string_value(json_object_get(client_json, "Territory")));
+    client_set_rep_code(client, json_string_value(json_object_get(client_json, "RepresentativeCode")));
+    client_set_rep_name(client, json_string_value(json_object_get(client_json, "RepresentativeName")));
+    client_set_street_address(client, json_string_value(json_object_get(client_json, "StreetAddress")));
+    client_set_zip(client, json_string_value(json_object_get(client_json, "ZIP")));
+    client_set_zip_ext(client, json_string_value(json_object_get(client_json, "ZIPExt")));
+    client_set_city(client, json_string_value(json_object_get(client_json, "City")));
+    client_set_state(client, json_string_value(json_object_get(client_json, "State")));
+    client_set_country(client, json_string_value(json_object_get(client_json, "Country")));
+    client_set_email(client, json_string_value(json_object_get(client_json, "Email")));
+    client_set_phone(client, json_string_value(json_object_get(client_json, "Phone")));
+    client_set_mobile(client, json_string_value(json_object_get(client_json, "Mobile")));
+    client_set_website(client, json_string_value(json_object_get(client_json, "Website")));
+    client_set_contact_name(client, json_string_value(json_object_get(client_json, "ContactName")));
+    client_set_contact_title(client, json_string_value(json_object_get(client_json, "ContactTitle")));
+    client_set_note(client, json_string_value(json_object_get(client_json, "Note")));
+    client_set_status(client, json_string_value(json_object_get(client_json, "Status")));
+    client_set_account_code(client, json_string_value(json_object_get(client_json, "AccountCode")));
+
+    json_t *custom_fields = json_object_get(client_json, "CustomFields");
+    if (json_is_array(custom_fields)) {
+        size_t index;
+        json_t *field;
+        json_array_foreach(custom_fields, index, field) {
+            const char *field_name = json_string_value(json_object_get(field, "Field"));
+            const char *field_value = json_string_value(json_object_get(field, "Value"));
+            client_add_custom_field(client, field_name, field_value);
+        }
+    }
+
+    // ******* NEED TO ADD PRICE LISTS BEFORE RUNNING THIS!!!! ************
+
+    json_t *price_lists = json_object_get(client_json, "PriceLists");
+    if (json_is_array(price_lists)) {
+        size_t index;
+        json_t *price_list;
+        json_array_foreach(price_lists, index, price_list) {
+            const char *price_list_name = json_string_value(json_object_get(price_list, "Name"));
+            client_add_price_list(client, price_list_name);
+        }
+    }
+
+    return client;
+}
+
+bool client_fetch_and_insert(PGconn *db_conn, long last_timestamp) {
+    json_t *root = api_fetch_data("clients", last_timestamp);
+    if (!root) {
+        return false;
+    }
+
+    json_t *clients = json_object_get(root, "Clients");
+    if (!json_is_array(clients)) {
+        fprintf(stderr, "JSON root is not an array\n");
+        json_decref(root);
+        return false;
+    }
+
+    size_t index;
+    json_t *client_json;
+    json_array_foreach(clients, index, client_json) {
+        ClientDataPtr client = client_from_json(client_json);
+        
+        if (!client_insert(db_conn, client)) {
+            fprintf(stderr, "Failed to insert client\n");
+            client_free(client);
+            continue;
+        }
+
+        client_free(client);
+    }
+
+    json_decref(root);
+    return true;
+}
