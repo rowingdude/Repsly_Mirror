@@ -1,5 +1,5 @@
-#ifndef PRICELISTS_H
-#define PRICELISTS_H
+#ifndef PRICELIST_H
+#define PRICELIST_H
 
 #include <stdbool.h>
 #include <libpq-fe.h>
@@ -22,4 +22,4 @@ void pricelist_add_item(PricelistDataPtr pricelist, int product_id, double price
 
 bool pricelist_fetch_and_insert(PGconn *db_conn);
 
-#endif // PRICELISTS_H
+#endif // PRICELIST_H
