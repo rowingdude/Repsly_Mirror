@@ -1,8 +1,42 @@
 #include "core_operations.h"
 #include <libpq-fe.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 
+PGconn* db_connect(void) {
+    const char *host = getenv("REPSLY_DB_HOST");
+    const char *port = getenv("REPSLY_DB_PORT");
+    const char *dbname = getenv("REPSLY_DB_NAME");
+    const char *user = getenv("REPSLY_DB_USER");
+    const char *password = getenv("REPSLY_DB_PASSWORD");
+
+    if (!host || !port || !dbname || !user || !password) {
+        fprintf(stderr, "One or more required environment variables are not set.\n");
+        return NULL;
+    }
+
+    char conninfo[256];
+    snprintf(conninfo, sizeof(conninfo),
+             "host=%s port=%s dbname=%s user=%s password=%s",
+             host, port, dbname, user, password);
+
+    PGconn *conn = PQconnectdb(conninfo);
+
+    if (PQstatus(conn) != CONNECTION_OK) {
+        fprintf(stderr, "Connection to database failed: %s", PQerrorMessage(conn));
+        PQfinish(conn);
+        return NULL;
+    }
+
+    return conn;
+}
+
+void db_disconnect(PGconn *conn) {
+    if (conn) {
+        PQfinish(conn);
+    }
+}
 
 // Unified cursor handling to modularize the helper functions a bit further...
 

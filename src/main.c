@@ -17,10 +17,9 @@ typedef struct {
 } EntityInfo;
 
 int main() {
-    PGconn *db_conn = PQconnectdb("your_connection_string");
-    if (PQstatus(db_conn) != CONNECTION_OK) {
-        fprintf(stderr, "Connection to database failed: %s", PQerrorMessage(db_conn));
-        PQfinish(db_conn);
+    PGconn *db_conn = db_connect();
+    if (!db_conn) {
+        fprintf(stderr, "Failed to connect to the database\n");
         return 1;
     }
 
@@ -29,13 +28,26 @@ int main() {
     EntityInfo entities[] = {
         {"clients", client_fetch_and_insert},
         {"forms", form_fetch_and_insert},
-        {"pricelists", pricelist_fetch_and_insert},
-        // Add more entities here as needed
+        {"pricelist", pricelist_fetch_and_insert},
+        //{"clientnotes", clientnotes_fetch_and_insert},
+        //{"visits", visits_fetch_and_insert},
+        //{"purchaseorders", purchaseorders_fetch_and_insert},
+        //{"retailaudits", retailaudits_fetch_and_insert},
+        //{"products", products_fetch_and_insert},
+        //{"pricelistitems", pricelistitems_fetch_and_insert},
+        //{"forms", forms_fetch_and_insert},
+        //{"photos", photos_fetch_and_insert},
+        //{"dailyworkingtime", dailyworkingtime_fetch_and_insert},
+        //{"visitschedules", visitschedules_fetch_and_insert},
+        //{"visitrealizations", visitrealizations_fetch_and_insert},
+        //{"users", users_fetch_and_insert},
+        //{"reps", reps_fetch_and_insert},
+        //{"documenttypes", documenttypes_fetch_and_insert},
+        
     };
 
     int num_entities = sizeof(entities) / sizeof(EntityInfo);
 
-    // Main processing loop
     bool all_done = false;
     while (!all_done) {
         all_done = true;
@@ -47,7 +59,7 @@ int main() {
                 long new_last_processed = get_last_processed(db_conn, entities[i].name);
                 
                 if (new_last_processed > last_processed) {
-                    all_done = false;  // We processed some data, so we're not done yet
+                    all_done = false; 
                 }
             } else {
                 fprintf(stderr, "Failed to fetch and insert %s\n", entities[i].name);
@@ -56,6 +68,6 @@ int main() {
     }
 
     api_cleanup();
-    PQfinish(db_conn);
+    db_disconnect(db_conn);
     return 0;
 }

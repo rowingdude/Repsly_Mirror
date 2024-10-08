@@ -4,6 +4,8 @@
 long get_last_processed(PGconn *conn, const char *entity_name);
 bool update_last_processed(PGconn *conn, const char *entity_name, long last_value);
 
+PGconn* db_connect(void);
+void db_disconnect(PGconn *conn);
 
 int get_or_create_address(PGconn *conn, const char *street, const char *zip, const char *city, const char *state, const char *country);
 int get_or_create_contact_info(PGconn *conn, const char *phone, const char *mobile, const char *website);

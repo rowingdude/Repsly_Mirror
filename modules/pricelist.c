@@ -80,32 +80,123 @@ void pricelist_add_item(PricelistDataPtr pricelist, const char* product_code, co
         pricelist->item_count++;
     }
 }
+static bool execute_pricelist_query(PGconn *db_conn, const char *query, const char **param_values, int param_count) {
+    int param_lengths[param_count];
+    int param_formats[param_count];
+    for (int i = 0; i < param_count; i++) {
+        param_lengths[i] = strlen(param_values[i]);
+        param_formats[i] = 0;  // All text format
+    }
+
+    PGresult *result = PQexecParams(db_conn, query, param_count, NULL, param_values, param_lengths, param_formats, 0);
+
+    bool success = (PQresultStatus(result) == PGRES_COMMAND_OK);
+    if (!success) {
+        fprintf(stderr, "Query execution failed: %s", PQerrorMessage(db_conn));
+    }
+
+    PQclear(result);
+    return success;
+}
+
+static bool insert_pricelist_item(PGconn *db_conn, int pricelist_id, struct PricelistItem *item) {
+    const char *insert_item_query = 
+        "INSERT INTO inventory.pricelist_items "
+        "(pricelist_id, product_id, price, active, client_id, manufacture_id, date_available_from_id, date_available_to_id, min_quantity, max_quantity) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)";
+
+    int product_id = get_or_create_product(db_conn, item->product_code, item->product_name);
+    int client_id = get_or_create_client(db_conn, item->client_code, item->client_name);
+    int date_from_id = get_or_create_date(db_conn, item->date_available_from);
+    int date_to_id = get_or_create_date(db_conn, item->date_available_to);
+
+    if (product_id < 0 || client_id < 0 || date_from_id < 0 || date_to_id < 0) {
+        return false;
+    }
+
+    char pricelist_id_str[20], product_id_str[20], price_str[20], active_str[6], 
+         client_id_str[20], date_from_id_str[20], date_to_id_str[20],
+         min_quantity_str[20], max_quantity_str[20];
+
+    snprintf(pricelist_id_str, sizeof(pricelist_id_str), "%d", pricelist_id);
+    snprintf(product_id_str, sizeof(product_id_str), "%d", product_id);
+    snprintf(price_str, sizeof(price_str), "%f", item->price);
+    snprintf(active_str, sizeof(active_str), "%s", item->active ? "true" : "false");
+    snprintf(client_id_str, sizeof(client_id_str), "%d", client_id);
+    snprintf(date_from_id_str, sizeof(date_from_id_str), "%d", date_from_id);
+    snprintf(date_to_id_str, sizeof(date_to_id_str), "%d", date_to_id);
+    snprintf(min_quantity_str, sizeof(min_quantity_str), "%d", item->min_quantity);
+    snprintf(max_quantity_str, sizeof(max_quantity_str), "%d", item->max_quantity);
+
+    const char *param_values[] = {
+        pricelist_id_str, product_id_str, price_str, active_str, client_id_str,
+        item->manufacture_id, date_from_id_str, date_to_id_str,
+        min_quantity_str, max_quantity_str
+    };
+
+    return execute_pricelist_query(db_conn, insert_item_query, param_values, 10);
+}
+
+static bool update_pricelist_item(PGconn *db_conn, int pricelist_id, struct PricelistItem *item) {
+    const char *update_item_query = 
+        "UPDATE inventory.pricelist_items SET "
+        "price = $3, active = $4, manufacture_id = $6, "
+        "date_available_from_id = $7, date_available_to_id = $8, "
+        "min_quantity = $9, max_quantity = $10 "
+        "WHERE pricelist_id = $1 AND product_id = $2 AND client_id = $5";
+
+    int product_id = get_or_create_product(db_conn, item->product_code, item->product_name);
+    int client_id = get_or_create_client(db_conn, item->client_code, item->client_name);
+    int date_from_id = get_or_create_date(db_conn, item->date_available_from);
+    int date_to_id = get_or_create_date(db_conn, item->date_available_to);
+
+    if (product_id < 0 || client_id < 0 || date_from_id < 0 || date_to_id < 0) {
+        return false;
+    }
+
+    char pricelist_id_str[20], product_id_str[20], price_str[20], active_str[6], 
+         client_id_str[20], date_from_id_str[20], date_to_id_str[20],
+         min_quantity_str[20], max_quantity_str[20];
+
+    snprintf(pricelist_id_str, sizeof(pricelist_id_str), "%d", pricelist_id);
+    snprintf(product_id_str, sizeof(product_id_str), "%d", product_id);
+    snprintf(price_str, sizeof(price_str), "%f", item->price);
+    snprintf(active_str, sizeof(active_str), "%s", item->active ? "true" : "false");
+    snprintf(client_id_str, sizeof(client_id_str), "%d", client_id);
+    snprintf(date_from_id_str, sizeof(date_from_id_str), "%d", date_from_id);
+    snprintf(date_to_id_str, sizeof(date_to_id_str), "%d", date_to_id);
+    snprintf(min_quantity_str, sizeof(min_quantity_str), "%d", item->min_quantity);
+    snprintf(max_quantity_str, sizeof(max_quantity_str), "%d", item->max_quantity);
+
+    const char *param_values[] = {
+        pricelist_id_str, product_id_str, price_str, active_str, client_id_str,
+        item->manufacture_id, date_from_id_str, date_to_id_str,
+        min_quantity_str, max_quantity_str
+    };
+
+    return execute_pricelist_query(db_conn, update_item_query, param_values, 10);
+}
 
 bool pricelist_insert(PGconn *db_conn, PricelistDataPtr pricelist) {
+    if (!db_conn || !pricelist) {
+        fprintf(stderr, "Error: Invalid database connection or pricelist data\n");
+        return false;
+    }
+
     const char *insert_pricelist_query = 
         "INSERT INTO inventory.pricelists "
         "(name, is_default, active, use_prices) "
         "VALUES ($1, $2, $3, $4) "
         "RETURNING pricelist_id";
 
-    const char *param_values[4];
-    int param_lengths[4];
-    int param_formats[4] = {0, 0, 0, 0};  // All text format
     char is_default_str[6], active_str[6], use_prices_str[6];
-
-    param_values[0] = pricelist->name;
     snprintf(is_default_str, sizeof(is_default_str), "%s", pricelist->is_default ? "true" : "false");
-    param_values[1] = is_default_str;
     snprintf(active_str, sizeof(active_str), "%s", pricelist->active ? "true" : "false");
-    param_values[2] = active_str;
     snprintf(use_prices_str, sizeof(use_prices_str), "%s", pricelist->use_prices ? "true" : "false");
-    param_values[3] = use_prices_str;
 
-    for (int i = 0; i < 4; i++) {
-        param_lengths[i] = strlen(param_values[i]);
-    }
+    const char *param_values[] = {pricelist->name, is_default_str, active_str, use_prices_str};
 
-    PGresult *result = PQexecParams(db_conn, insert_pricelist_query, 4, NULL, param_values, param_lengths, param_formats, 0);
+    PGresult *result = PQexecParams(db_conn, insert_pricelist_query, 4, NULL, param_values, NULL, NULL, 0);
 
     if (PQresultStatus(result) != PGRES_TUPLES_OK) {
         fprintf(stderr, "INSERT INTO inventory.pricelists failed: %s", PQerrorMessage(db_conn));
@@ -116,79 +207,55 @@ bool pricelist_insert(PGconn *db_conn, PricelistDataPtr pricelist) {
     pricelist->pricelist_id = atoi(PQgetvalue(result, 0, 0));
     PQclear(result);
 
-    // Insert pricelist items
-    const char *insert_item_query = 
-        "INSERT INTO inventory.pricelist_items "
-        "(pricelist_id, product_id, price, active, client_id, manufacture_id, date_available_from_id, date_available_to_id, min_quantity, max_quantity) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)";
-
     for (int i = 0; i < pricelist->item_count; i++) {
-        const char *item_param_values[10];
-        int item_param_lengths[10];
-        int item_param_formats[10] = {0};  // All text format
-        char pricelist_id_str[20], product_id_str[20], price_str[20], active_str[6], 
-             client_id_str[20], date_from_id_str[20], date_to_id_str[20],
-             min_quantity_str[20], max_quantity_str[20];
-
-        // Get or create product
-        int product_id = get_or_create_product(db_conn, pricelist->items[i].product_code, pricelist->items[i].product_name);
-        if (product_id < 0) {
-            fprintf(stderr, "Failed to get or create product\n");
+        if (!insert_pricelist_item(db_conn, pricelist->pricelist_id, &pricelist->items[i])) {
             return false;
         }
-
-        // Get or create client
-        int client_id = get_or_create_client(db_conn, pricelist->items[i].client_code, pricelist->items[i].client_name);
-        if (client_id < 0) {
-            fprintf(stderr, "Failed to get or create client\n");
-            return false;
-        }
-
-        // Get or create dates
-        int date_from_id = get_or_create_date(db_conn, pricelist->items[i].date_available_from);
-        int date_to_id = get_or_create_date(db_conn, pricelist->items[i].date_available_to);
-        if (date_from_id < 0 || date_to_id < 0) {
-            fprintf(stderr, "Failed to get or create dates\n");
-            return false;
-        }
-
-        snprintf(pricelist_id_str, sizeof(pricelist_id_str), "%d", pricelist->pricelist_id);
-        item_param_values[0] = pricelist_id_str;
-        snprintf(product_id_str, sizeof(product_id_str), "%d", product_id);
-        item_param_values[1] = product_id_str;
-        snprintf(price_str, sizeof(price_str), "%f", pricelist->items[i].price);
-        item_param_values[2] = price_str;
-        snprintf(active_str, sizeof(active_str), "%s", pricelist->items[i].active ? "true" : "false");
-        item_param_values[3] = active_str;
-        snprintf(client_id_str, sizeof(client_id_str), "%d", client_id);
-        item_param_values[4] = client_id_str;
-        item_param_values[5] = pricelist->items[i].manufacture_id;
-        snprintf(date_from_id_str, sizeof(date_from_id_str), "%d", date_from_id);
-        item_param_values[6] = date_from_id_str;
-        snprintf(date_to_id_str, sizeof(date_to_id_str), "%d", date_to_id);
-        item_param_values[7] = date_to_id_str;
-        snprintf(min_quantity_str, sizeof(min_quantity_str), "%d", pricelist->items[i].min_quantity);
-        item_param_values[8] = min_quantity_str;
-        snprintf(max_quantity_str, sizeof(max_quantity_str), "%d", pricelist->items[i].max_quantity);
-        item_param_values[9] = max_quantity_str;
-
-        for (int j = 0; j < 10; j++) {
-            item_param_lengths[j] = strlen(item_param_values[j]);
-        }
-
-        PGresult *item_result = PQexecParams(db_conn, insert_item_query, 10, NULL, item_param_values, item_param_lengths, item_param_formats, 0);
-
-        if (PQresultStatus(item_result) != PGRES_COMMAND_OK) {
-            fprintf(stderr, "INSERT INTO inventory.pricelist_items failed: %s", PQerrorMessage(db_conn));
-            PQclear(item_result);
-            return false;
-        }
-
-        PQclear(item_result);
     }
 
     return true;
 }
+
+bool pricelist_update(PGconn *db_conn, PricelistDataPtr pricelist) {
+    if (!db_conn || !pricelist) {
+        fprintf(stderr, "Error: Invalid database connection or pricelist data\n");
+        return false;
+    }
+
+    const char *update_pricelist_query = 
+        "UPDATE inventory.pricelists SET "
+        "is_default = $2, active = $3, use_prices = $4 "
+        "WHERE name = $1 "
+        "RETURNING pricelist_id";
+
+    char is_default_str[6], active_str[6], use_prices_str[6];
+    snprintf(is_default_str, sizeof(is_default_str), "%s", pricelist->is_default ? "true" : "false");
+    snprintf(active_str, sizeof(active_str), "%s", pricelist->active ? "true" : "false");
+    snprintf(use_prices_str, sizeof(use_prices_str), "%s", pricelist->use_prices ? "true" : "false");
+
+    const char *param_values[] = {pricelist->name, is_default_str, active_str, use_prices_str};
+
+    PGresult *result = PQexecParams(db_conn, update_pricelist_query, 4, NULL, param_values, NULL, NULL, 0);
+
+    if (PQresultStatus(result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "UPDATE inventory.pricelists failed: %s", PQerrorMessage(db_conn));
+        PQclear(result);
+        return false;
+    }
+
+    pricelist->pricelist_id = atoi(PQgetvalue(result, 0, 0));
+    PQclear(result);
+
+    for (int i = 0; i < pricelist->item_count; i++) {
+        if (!update_pricelist_item(db_conn, pricelist->pricelist_id, &pricelist->items[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
 int pricelist_get_id(PricelistDataPtr pricelist) {
     return pricelist->pricelist_id;
 }
@@ -198,7 +265,16 @@ void pricelist_free(PricelistDataPtr pricelist) {
 }
 
 static PricelistDataPtr pricelist_from_json(json_t *pricelist_json) {
+    if (!json_is_object(pricelist_json)) {
+        fprintf(stderr, "Error: pricelist_json is not a JSON object\n");
+        return NULL;
+    }
+
     PricelistDataPtr pricelist = pricelist_create();
+    if (!pricelist) {
+        fprintf(stderr, "Error: Failed to create pricelist\n");
+        return NULL;
+    }    PricelistDataPtr pricelist = pricelist_create();
     
     pricelist_set_name(pricelist, json_string_value(json_object_get(pricelist_json, "Name")));
     pricelist_set_is_default(pricelist, json_is_true(json_object_get(pricelist_json, "IsDefault")));
@@ -230,26 +306,62 @@ static PricelistDataPtr pricelist_from_json(json_t *pricelist_json) {
     
     return pricelist;
 }
-bool pricelist_fetch_and_insert(PGconn *db_conn) {
-    json_t *root = api_fetch_data("pricelists", 0);  // Assuming we always fetch all pricelists
+
+static bool pricelist_exists(PGconn *db_conn, const char *name) {
+    const char *query = "SELECT 1 FROM inventory.pricelists WHERE name = $1";
+    const char *param_values[] = { name };
+    int param_lengths[] = { strlen(name) };
+    int param_formats[] = { 0 };  
+
+    PGresult *result = PQexecParams(db_conn, query, 1, NULL, param_values, param_lengths, param_formats, 0);
+
+    bool exists = (PQresultStatus(result) == PGRES_TUPLES_OK && PQntuples(result) > 0);
+    PQclear(result);
+
+    return exists;
+}
+
+bool pricelist_fetch_and_insert(PGconn *db_conn, long last_processed_id) {
+    json_t *root = api_fetch_data("pricelists", last_processed_id);
     if (!root) {
         return false;
     }
 
     size_t index;
     json_t *pricelist_json;
+    long max_processed_id = last_processed_id;
+
     json_array_foreach(root, index, pricelist_json) {
         PricelistDataPtr pricelist = pricelist_from_json(pricelist_json);
         
-        if (!pricelist_insert(db_conn, pricelist)) {
-            fprintf(stderr, "Failed to insert pricelist\n");
-            pricelist_free(pricelist);
-            continue;
+        if (pricelist_exists(db_conn, pricelist->name)) {
+            if (!pricelist_update(db_conn, pricelist)) {
+                fprintf(stderr, "Failed to update pricelist\n");
+                pricelist_free(pricelist);
+                continue;
+            }
+        } else {
+            if (!pricelist_insert(db_conn, pricelist)) {
+                fprintf(stderr, "Failed to insert pricelist\n");
+                pricelist_free(pricelist);
+                continue;
+            }
+        }
+
+        long current_id = pricelist_get_id(pricelist);
+        if (current_id > max_processed_id) {
+            max_processed_id = current_id;
         }
 
         pricelist_free(pricelist);
     }
 
     json_decref(root);
+
+    // Update the last processed ID
+    if (!update_last_processed(db_conn, "pricelists", max_processed_id)) {
+        fprintf(stderr, "Failed to update last processed ID for pricelists\n");
+    }
+
     return true;
 }
