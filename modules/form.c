@@ -1,7 +1,9 @@
 #include "../include/form.h"
+#include "../include/api.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <jansson.h>
 
 #define MAX_FORM_ITEMS 50
 
@@ -96,8 +98,8 @@ bool form_insert(PGconn *db_conn, FormDataPtr form) {
     for (int i = 0; i < form->item_count; i++) {
         const char *item_param_values[3];
         int item_param_lengths[3];
-        int item_param_formats[3] = {0};  // All text format
-
+        int item_param_formats[3] = {0}; 
+        
         snprintf(id_str[0], sizeof(id_str[0]), "%d", form->form_id);
         item_param_values[0] = id_str[0];
         item_param_values[1] = form->items[i].field;
@@ -127,4 +129,77 @@ int form_get_id(FormDataPtr form) {
 
 void form_free(FormDataPtr form) {
     free(form);
+}
+
+static FormDataPtr form_from_json(json_t *form_json) {
+    FormDataPtr form = form_create();
+    
+    form_set_name(form, json_string_value(json_object_get(form_json, "FormName")));
+    form_set_form_id(form, json_integer_value(json_object_get(form_json, "FormID")));
+    form_set_client_code(form, json_string_value(json_object_get(form_json, "ClientCode")));
+    form_set_client_name(form, json_string_value(json_object_get(form_json, "ClientName")));
+    form_set_date_and_time(form, json_integer_value(json_object_get(form_json, "DateAndTime")));
+    form_set_rep_code(form, json_string_value(json_object_get(form_json, "RepresentativeCode")));
+    form_set_rep_name(form, json_string_value(json_object_get(form_json, "RepresentativeName")));
+    form_set_street_address(form, json_string_value(json_object_get(form_json, "StreetAddress")));
+    form_set_zip(form, json_string_value(json_object_get(form_json, "ZIP")));
+    form_set_zip_ext(form, json_string_value(json_object_get(form_json, "ZIPExt")));
+    form_set_city(form, json_string_value(json_object_get(form_json, "City")));
+    form_set_state(form, json_string_value(json_object_get(form_json, "State")));
+    form_set_country(form, json_string_value(json_object_get(form_json, "Country")));
+    form_set_email(form, json_string_value(json_object_get(form_json, "Email")));
+    form_set_phone(form, json_string_value(json_object_get(form_json, "Phone")));
+    form_set_mobile(form, json_string_value(json_object_get(form_json, "Mobile")));
+    form_set_territory(form, json_string_value(json_object_get(form_json, "Territory")));
+    form_set_longitude(form, json_real_value(json_object_get(form_json, "Longitude")));
+    form_set_latitude(form, json_real_value(json_object_get(form_json, "Latitude")));
+    form_set_signature_url(form, json_string_value(json_object_get(form_json, "SignatureURL")));
+    form_set_visit_start(form, json_integer_value(json_object_get(form_json, "VisitStart")));
+    form_set_visit_end(form, json_integer_value(json_object_get(form_json, "VisitEnd")));
+    form_set_visit_id(form, json_integer_value(json_object_get(form_json, "VisitID")));
+
+    // Parse and add form items
+    json_t *items = json_object_get(form_json, "Item");
+    if (json_is_array(items)) {
+        size_t item_index;
+        json_t *item;
+        json_array_foreach(items, item_index, item) {
+            const char *field = json_string_value(json_object_get(item, "Field"));
+            const char *value = json_string_value(json_object_get(item, "Value"));
+            form_add_item(form, field, value);
+        }
+    }
+    
+    return form;
+}
+
+bool form_fetch_and_insert(PGconn *db_conn, long last_form_id) {
+    json_t *root = api_fetch_data("forms", last_form_id);
+    if (!root) {
+        return false;
+    }
+
+    json_t *forms = json_object_get(root, "Forms");
+    if (!json_is_array(forms)) {
+        fprintf(stderr, "JSON root is not an array\n");
+        json_decref(root);
+        return false;
+    }
+
+    size_t index;
+    json_t *form_json;
+    json_array_foreach(forms, index, form_json) {
+        FormDataPtr form = form_from_json(form_json);
+        
+        if (!form_insert(db_conn, form)) {
+            fprintf(stderr, "Failed to insert form\n");
+            form_free(form);
+            continue;
+        }
+
+        form_free(form);
+    }
+
+    json_decref(root);
+    return true;
 }
