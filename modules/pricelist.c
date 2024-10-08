@@ -112,7 +112,7 @@ bool pricelist_insert(PGconn *db_conn, PricelistDataPtr pricelist) {
     // Insert pricelist items
     const char *insert_item_query = 
         "INSERT INTO inventory.pricelist_items "
-        "(pricelist_id, product_id, price, active, client_id, manufacture_id, date_available_from, date_available_to, min_quantity, max_quantity) "
+        "(pricelist_id, product_id, price, active, client_id, manufacture_id, date_available_from_id, date_available_to_id, min_quantity, max_quantity) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)";
 
     for (int i = 0; i < pricelist->item_count; i++) {
@@ -120,20 +120,46 @@ bool pricelist_insert(PGconn *db_conn, PricelistDataPtr pricelist) {
         int item_param_lengths[10];
         int item_param_formats[10] = {0};  // All text format
         char pricelist_id_str[20], product_id_str[20], price_str[20], active_str[6], 
+             client_id_str[20], date_from_id_str[20], date_to_id_str[20],
              min_quantity_str[20], max_quantity_str[20];
+
+        // Get or create product
+        int product_id = get_or_create_product(db_conn, pricelist->items[i].product_code, pricelist->items[i].product_name);
+        if (product_id < 0) {
+            fprintf(stderr, "Failed to get or create product\n");
+            return false;
+        }
+
+        // Get or create client
+        int client_id = get_or_create_client(db_conn, pricelist->items[i].client_code, pricelist->items[i].client_name);
+        if (client_id < 0) {
+            fprintf(stderr, "Failed to get or create client\n");
+            return false;
+        }
+
+        // Get or create dates
+        int date_from_id = get_or_create_date(db_conn, pricelist->items[i].date_available_from);
+        int date_to_id = get_or_create_date(db_conn, pricelist->items[i].date_available_to);
+        if (date_from_id < 0 || date_to_id < 0) {
+            fprintf(stderr, "Failed to get or create dates\n");
+            return false;
+        }
 
         snprintf(pricelist_id_str, sizeof(pricelist_id_str), "%d", pricelist->pricelist_id);
         item_param_values[0] = pricelist_id_str;
-        snprintf(product_id_str, sizeof(product_id_str), "%d", pricelist->items[i].product_id);
+        snprintf(product_id_str, sizeof(product_id_str), "%d", product_id);
         item_param_values[1] = product_id_str;
         snprintf(price_str, sizeof(price_str), "%f", pricelist->items[i].price);
         item_param_values[2] = price_str;
         snprintf(active_str, sizeof(active_str), "%s", pricelist->items[i].active ? "true" : "false");
         item_param_values[3] = active_str;
-        item_param_values[4] = pricelist->items[i].client_code;
+        snprintf(client_id_str, sizeof(client_id_str), "%d", client_id);
+        item_param_values[4] = client_id_str;
         item_param_values[5] = pricelist->items[i].manufacture_id;
-        item_param_values[6] = pricelist->items[i].date_available_from;
-        item_param_values[7] = pricelist->items[i].date_available_to;
+        snprintf(date_from_id_str, sizeof(date_from_id_str), "%d", date_from_id);
+        item_param_values[6] = date_from_id_str;
+        snprintf(date_to_id_str, sizeof(date_to_id_str), "%d", date_to_id);
+        item_param_values[7] = date_to_id_str;
         snprintf(min_quantity_str, sizeof(min_quantity_str), "%d", pricelist->items[i].min_quantity);
         item_param_values[8] = min_quantity_str;
         snprintf(max_quantity_str, sizeof(max_quantity_str), "%d", pricelist->items[i].max_quantity);
@@ -156,7 +182,6 @@ bool pricelist_insert(PGconn *db_conn, PricelistDataPtr pricelist) {
 
     return true;
 }
-
 int pricelist_get_id(PricelistDataPtr pricelist) {
     return pricelist->pricelist_id;
 }
